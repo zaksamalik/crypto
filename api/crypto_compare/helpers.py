@@ -13,7 +13,7 @@ import pandas as pd
 
 class EndpointBases:
     """
-    TODO: EndpointBase docstrings
+    TODO: docstrings
     """
 
     def __init__(self):
@@ -48,12 +48,12 @@ class EndpointBases:
         self.OTHER_ALL_COINS = "https://min-api.cryptocompare.com/data/all/coinlist"
 
 
-class Historical:
+class HistoricalOHLCV:
     """
     TODO: docstrings
     """
 
-    def __init__(self, app_name, request_type, fsyms, tsyms, limit, all_data, exchange='CCCAGG'):
+    def __init__(self, app_name, request_type, fsyms, tsyms, limit, all_data=False, exchange='CCCAGG'):
         """
         TODO: docstrings
         :param app_name: (string) Name of application (CryptoCompare recommends this be sent)
@@ -62,7 +62,7 @@ class Historical:
         :param tsyms: (list of strings) List of currency symbols to convert into
         :param limit: (integer) The number of data points to return (max 2000)
         :param all_data: (boolean) Return all historical data (param only available for `HISTORICAL_DAILY_OHLCV`)
-        :param exchange: exchange to obtain data from (default is CryptoCompare's aggreagate `CCCAGG`
+        :param exchange: exchange to obtain data from (default is CryptoCompare's aggregate `CCCAGG`
         """
         self.app_name = app_name
         self.request_type = request_type
@@ -81,17 +81,25 @@ class Historical:
     # instantiate endpoint bases
     endpoint_bases = EndpointBases()
 
+    def run_validation(self):
+        """
+        TODO:
+        :return:
+        """
+        assert self.request_type in ['HISTORICAL_DAILY_OHLCV',
+                                     'HISTORICAL_HOURLY_OHLCV',
+                                     'HISTORICAL_MINUTE_OHLCV'], "Invalid request_type: `{}`".format(self.request_type)
+
     def get_url(self):
         """
         TODO:
         :return:
         """
         url = self.endpoint_bases.__getattribute__(self.request_type)
-        if self.request_type in ['HISTORICAL_DAILY_OHLCV', 'HISTORICAL_HOURLY_OHLCV', 'HISTORICAL_MINUTE_OHLCV']:
-            if self.all_data:
-                url = url + "&limit=2000&toTs={3}"
-            else:
-                url = url + "&limit={}".format(self.limit)
+        if self.all_data:
+            url = url + "&limit=2000&toTs={3}"
+        else:
+            url = url + "&limit={}".format(self.limit)
         url = url + "&e={0}&extraParams={1}".format(self.exchange, self.app_name)
         self.url = url
 
@@ -102,7 +110,7 @@ class Historical:
         """
         self.pairs = itertools.product(self.fsyms, self.tsyms)
 
-    async def get_historical_daily(self):
+    async def get_historical(self):
         """
         TODO:
         :return:
@@ -143,6 +151,8 @@ class Historical:
         TODO:
         :return:
         """
+        # run validations
+        self.run_validation()
         # get url
         self.get_url()
         # get pairs to pull from CryptoCompare API
@@ -151,7 +161,7 @@ class Historical:
         print("~~~ Pulling Historical OHLCV data ~~~")
         start_time = time.time()
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.get_historical_daily())
+        loop.run_until_complete(self.get_historical())
         print("~~~ Historical OHLCV data pulled in: %s minutes ~~~" % round((time.time() - start_time) / 60, 2))
         # convert repsonses to concatenated Pandas DataFrame
         self.responses_to_dfs()
