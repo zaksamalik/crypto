@@ -1,17 +1,19 @@
 """
 TODO: docstrings
 """
-from api.crypto_compare.helpers import CCEndpointBases
-import requests as req
 import json
-import pandas as pd
-from datetime import datetime
 import re
+from datetime import datetime
+
+import pandas as pd
+import requests as req
+
+from api.crypto_compare.helpers import CCEndpointBases
 from helpers.aws import df_to_s3
 
 
 def get_coin_list():
-    """ Gets list of coins with coin-level info from CryptoCompare API.
+    """ Gets list of coins with coin-level info from CryptoCompare api.
 
     Returns: Pandas DataFrame containing results from `CCEndpointBases().OTHER_ALL_COINS` response.
 

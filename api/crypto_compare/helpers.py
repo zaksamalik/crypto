@@ -1,21 +1,22 @@
 # -*- coding: utf-8 -*
-"""Contains helpers for interacting with CryptoCompare API.
+"""Contains helpers for interacting with CryptoCompare api.
 
 See documentation: https://min-api.cryptocompare.com/documentation
 """
 
-import itertools
-from asyncio_throttle import Throttler
 import asyncio
-import aiohttp
-import time
+import itertools
 import json
-import pandas as pd
+import time
 from datetime import datetime, timezone
+
+import aiohttp
+import pandas as pd
+from asyncio_throttle import Throttler
 
 
 class CCEndpointBases:
-    """Stores URL endpoints for interacting with CryptoCompare API.
+    """Stores URL endpoints for interacting with CryptoCompare api.
     """
 
     def __init__(self):
@@ -50,7 +51,7 @@ class CCEndpointBases:
 class CCHistoricalOHLCV:
     """Class to interact with CryptoCompare `HISTORICAL_X_OHLCV` endpoints.
 
-    Pulls historical OHLCV data on a daily, hourly, and minute basis from CryptoCompare API.
+    Pulls historical OHLCV data on a daily, hourly, and minute basis from CryptoCompare api.
 
     `run` function executes all functions in the following order:
         - `run_validation`
@@ -116,7 +117,7 @@ class CCHistoricalOHLCV:
 
         Value is used in functions:
             `get_historical`: start value passed for `toTs` param in URL endpoint when `self.all_data_non_daily`
-            `response_to_df`: filter API response results for records on / before last UTC close
+            `response_to_df`: filter api response results for records on / before last UTC close
 
         Returns: `self.last_utc_close_ts` set to last UTC close as timestamp (integer).
 
@@ -151,7 +152,7 @@ class CCHistoricalOHLCV:
         self.pairs = itertools.product(self.fsyms, self.tsyms)
 
     async def get_historical(self):
-        """Gets historical OHLCV data from CryptoCompare API.
+        """Gets historical OHLCV data from CryptoCompare api.
 
         Returns: appends successful HTTP responses to `self.responses` and corresponding pairs to `self.response_pairs`
 
@@ -173,9 +174,9 @@ class CCHistoricalOHLCV:
                         await asyncio.sleep(0.01)
 
     def responses_to_df(self):
-        """Converts API response contents into concatenated single Pandas DataFrame.
+        """Converts api response contents into concatenated single Pandas DataFrame.
 
-        Returns: `self.response_df` set to concatenated Pandas DataFrame containing API response contents.
+        Returns: `self.response_df` set to concatenated Pandas DataFrame containing api response contents.
 
         """
         response_df_list = []
