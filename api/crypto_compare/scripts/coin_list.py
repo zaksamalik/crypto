@@ -1,3 +1,6 @@
+"""
+TODO: docstrings
+"""
 from api.crypto_compare.helpers import CCEndpointBases
 import requests as req
 import json

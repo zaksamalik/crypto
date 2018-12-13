@@ -1,6 +1,10 @@
+# -*- coding: utf-8 -*
+"""Contains 'helper' functions used across `crypto` repository.
+
+Attributes:
+    -`df_to_s3`: function to upload Pandas DataFrame to AWS S3.
 """
-TODO: docstrings
-"""
+
 import re
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -27,4 +31,4 @@ def df_to_s3(df, target_bucket, folder_path, file_name):
     pq.write_to_dataset(table=pa_tbl,
                         root_path=output_file,
                         filesystem=s3)
-    print("Successfully uploaded DataFrame as Parquet file to S3 bucket: `{}`".format(re.sub('s3://', '', output_file)))
+    print("`df_to_s3`: Successfully uploaded to S3 bucket: `{}`".format(re.sub('s3://', '', output_file)))
