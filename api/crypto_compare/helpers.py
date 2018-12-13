@@ -14,7 +14,7 @@ import pandas as pd
 from datetime import datetime, timezone
 
 
-class EndpointBases:
+class CCEndpointBases:
     """Stores URL endpoints for interacting with CryptoCompare API.
     """
 
@@ -47,7 +47,7 @@ class EndpointBases:
         self.OTHER_ALL_COINS = "https://min-api.cryptocompare.com/data/all/coinlist"
 
 
-class HistoricalOHLCV:
+class CCHistoricalOHLCV:
     """Class to interact with CryptoCompare `HISTORICAL_X_OHLCV` endpoints.
 
     Pulls historical OHLCV data on a daily, hourly, and minute basis from CryptoCompare API.
@@ -81,7 +81,7 @@ class HistoricalOHLCV:
         self.all_data = all_data
         self.exchange = exchange
         # ~~~ Not Passed During Instantiation ~~~
-        self.endpoint_bases = EndpointBases()
+        self.endpoint_bases = CCEndpointBases()
         self.last_utc_close_ts = None
         self.url = None
         self.pairs = None
