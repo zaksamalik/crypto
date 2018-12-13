@@ -1,7 +1,9 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*
+"""Contains helpers for interacting with CryptoCompare API.
+
+See documentation: https://min-api.cryptocompare.com/documentation
 """
-TODO: docstrings
-"""
+
 import itertools
 from asyncio_throttle import Throttler
 import asyncio
@@ -9,17 +11,14 @@ import aiohttp
 import time
 import json
 import pandas as pd
+from datetime import datetime, timezone
 
 
 class EndpointBases:
-    """
-    TODO: docstrings
+    """Stores URL endpoints for interacting with CryptoCompare API.
     """
 
     def __init__(self):
-        """
-        TODO: docstrings
-        """
         # Price
         self.PRICE_SINGLE = "https://min-api.cryptocompare.com/data/price?"
         self.PRICE_MULTIPLE = "https://min-api.cryptocompare.com/data/pricemulti?"
@@ -49,90 +48,135 @@ class EndpointBases:
 
 
 class HistoricalOHLCV:
-    """
-    TODO: docstrings
-    """
+    """Class to interact with CryptoCompare `HISTORICAL_X_OHLCV` endpoints.
 
+    Pulls historical OHLCV data on a daily, hourly, and minute basis from CryptoCompare API.
+
+    `run` function executes all functions in the following order:
+        - `run_validation`
+        - `get_last_utc_close`
+        - `get_url`
+        - `get_pairs`
+        - `get_historical`
+        - `responses_to_df`
+
+    """
     def __init__(self, app_name, request_type, fsyms, tsyms, limit, all_data=False, exchange='CCCAGG'):
-        """
-        TODO: docstrings
-        :param app_name: (string) Name of application (CryptoCompare recommends this be sent)
-        :param request_type: (string) Name of the URL endpoint base from instantiated `EndpointBase` class
-        :param fsyms: (list of strings) List of cryptocurrency symbols of interest
-        :param tsyms: (list of strings) List of currency symbols to convert into
-        :param limit: (integer) The number of data points to return (max 2000)
-        :param all_data: (boolean) Return all historical data (param only available for `HISTORICAL_DAILY_OHLCV`)
-        :param exchange: exchange to obtain data from (default is CryptoCompare's aggregate `CCCAGG`
+        """Instantiates class with passed variables & sets values for non-passed variables to be used in functions.
+
+        Args:
+            app_name (str): Name of application (CryptoCompare recommends this be sent)
+            request_type (str): Name of the URL endpoint 'base' from instantiated `EndpointBase` class
+            fsyms (list): List of cryptocurrency symbols of interest
+            tsyms (list): List of currency symbols to convert into
+            limit (int): The number of data points to return (max 2000)
+            all_data (bool): Whether to return all historical data
+            exchange (str): Name of crypto exchange to obtain data (default is CryptoCompare's aggregate `CCCAGG`)
         """
         self.app_name = app_name
         self.request_type = request_type
         self.fsyms = fsyms
         self.tsyms = tsyms
-        self.url = None
-        self.pairs = None
         self.limit = limit
         self.all_data = all_data
         self.exchange = exchange
+        # ~~~ Not Passed During Instantiation ~~~
         self.endpoint_bases = EndpointBases()
+        self.last_utc_close_ts = None
+        self.url = None
+        self.pairs = None
+        self.all_data_non_daily = self.all_data & (self.request_type in ['HISTORICAL_HOURLY_OHLCV',
+                                                                         'HISTORICAL_MINUTE_OHLCV'])
         self.responses = []
         self.response_pairs = []
         self.response_df = None
 
-    # instantiate endpoint bases
-    endpoint_bases = EndpointBases()
-
     def run_validation(self):
+        """Checks that input variable values are valid.
+
+        Returns: First assertion error message for a failed validation check
+
         """
-        TODO:
-        :return:
-        """
+        # check input types
+        assert type(self.app_name) is str, "Invalid value provided for `app_name` {}".format(str(self.app_name))
+        assert type(self.fsyms) is list, "Invalid value provided for `fsyms` {}".format(str(self.fsyms))
+        assert all([type(x) is str for x in self.fsyms]), "Invalid list contents in `fsyms` {}".format(str(self.fsyms))
+        assert type(self.tsyms) is list, "Invalid value provided for `tsyms` {}".format(str(self.tsyms))
+        assert all([type(x) is str for x in self.tsyms]), "Invalid list contents in `tsyms` {}".format(str(self.fsyms))
+        assert type(self.limit) is int, "Invalid value provided for `limit` {}".format(str(self.limit))
+        assert type(self.all_data) is bool, "Invalid value provided for `all_date` {}".format(str(self.all_data))
+        assert type(self.exchange) is str, "Invalid value provided for `exchange` {}".format(str(self.exchange))
+        # validate `request_type`
         assert self.request_type in ['HISTORICAL_DAILY_OHLCV',
                                      'HISTORICAL_HOURLY_OHLCV',
                                      'HISTORICAL_MINUTE_OHLCV'], "Invalid request_type: `{}`".format(self.request_type)
 
-    def get_url(self):
+    def get_last_utc_close(self):
+        """Gets most recent UTC close as timestamp (int).
+
+        Value is used in functions:
+            `get_historical`: start value passed for `toTs` param in URL endpoint when `self.all_data_non_daily`
+            `response_to_df`: filter API response results for records on / before last UTC close
+
+        Returns: `self.last_utc_close_ts` set to last UTC close as timestamp (integer).
+
         """
-        TODO:
-        :return:
+        utc_current = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+        utc_previous = utc_current - pd.DateOffset(days=1)
+        self.last_utc_close_ts = utc_previous.timestamp().__int__()
+
+    def get_url(self):
+        """Get URL endpoint with all parameter values except `fsym` and `tsym`.
+
+        Returns: `self.url` set to URL endpoint with all parameter values except `fsym` and `tsym`.
+
         """
         url = self.endpoint_bases.__getattribute__(self.request_type)
         if self.all_data:
-            url = url + "&limit=2000&toTs={3}"
+            if self.request_type == 'HISTORICAL_DAILY_OHLCV':
+                url = url + "&allData=true"
+            else:
+                url = url + "&limit=2000&toTs={3}"
         else:
             url = url + "&limit={}".format(self.limit)
         url = url + "&e={0}&extraParams={1}".format(self.exchange, self.app_name)
         self.url = url
 
     def get_pairs(self):
-        """
-        TODO:
-        :return:
+        """Gets all combinations of `fsyms` and `tsyms`.
+
+        Returns: `self.pairs` set to result of itertools product of `self.fsyms` and `self.tsyms`.
+
         """
         self.pairs = itertools.product(self.fsyms, self.tsyms)
 
     async def get_historical(self):
+        """Gets historical OHLCV data from CryptoCompare API.
+
+        Returns: appends successful HTTP responses to `self.responses` and corresponding pairs to `self.response_pairs`
+
         """
-        TODO:
-        :return:
-        """
-        throttler = Throttler(rate_limit=290, period=60)
-        if self.all_data:
-            # TODO:
+        # handle `all_data` = True for `HISTORICAL_HOURLY_OHLCV` and `HISTORICAL_MINUTE_OHLCV`
+        if self.all_data_non_daily:
+            # TODO: get all historical OHLCV data for non-daily request types
             print('a')
         else:
+            # CryptoCompare has limit of 2000 requests per minute
+            throttler = Throttler(rate_limit=1900, period=60)
             async with aiohttp.ClientSession() as session:
                 for pair in self.pairs:
                     async with throttler:
-                        async with session.get(self.url.format(pair[0], pair[1], self.limit)) as resp:
+                        async with session.get(self.url.format(pair[0], pair[1])) as resp:
                             if resp.status == 200:
                                 self.responses.append(await resp.text())
                                 self.response_pairs.append(pair)
                         await asyncio.sleep(0.01)
 
-    def responses_to_dfs(self):
-        """
-        TODO:
-        :return:
+    def responses_to_df(self):
+        """Converts API response contents into concatenated single Pandas DataFrame.
+
+        Returns: `self.response_df` set to concatenated Pandas DataFrame containing API response contents.
+
         """
         response_df_list = []
         for response, pair in list(zip(self.responses, self.response_pairs)):
@@ -141,27 +185,34 @@ class HistoricalOHLCV:
                 response_df = pd.DataFrame(data)
                 response_df['fsym'] = pair[0]
                 response_df['tsym'] = pair[1]
-                response_df_list.append(response_df)
+                # ensure end results are on or before last UTC close
+                response_df_filtered = response_df[response_df['time'] <= self.last_utc_close_ts]
+                response_df_list.append(response_df_filtered)
         assert len(response_df_list) > 0, "~~~ None of the successful responses contain new data! ~~~"
 
         self.response_df = pd.concat(response_df_list)
 
     def run(self):
+        """Run all functions.
+
+        Returns: results of all functions called.
+
         """
-        TODO:
-        :return:
-        """
-        # run validations
         self.run_validation()
-        # get url
+
+        self.get_last_utc_close()
+
         self.get_url()
-        # get pairs to pull from CryptoCompare API
+
         self.get_pairs()
-        # asynchronously pull CryptoCompare historical data
+
         print("~~~ Pulling Historical OHLCV data ~~~")
         start_time = time.time()
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.get_historical())
+        if self.all_data_non_daily:
+            self.get_historical()
+        else:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(self.get_historical())
         print("~~~ Historical OHLCV data pulled in: %s minutes ~~~" % round((time.time() - start_time) / 60, 2))
-        # convert repsonses to concatenated Pandas DataFrame
-        self.responses_to_dfs()
+
+        self.responses_to_df()
