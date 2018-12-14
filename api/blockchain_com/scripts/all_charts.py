@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*
 """Gets all chart data from `blockchain.com` and loads it to S3.
-# TODO: handle different timestamps & data formats (csv --> DF --> parquet?)
+# TODO: handle different timestamps? & data formats (csv --> DF --> parquet?)
 """
 
 import asyncio
@@ -18,13 +18,13 @@ def get_chart_data(s3_folder_path_base='api/blockchain.com/charts/', timespan='a
 
     Args:
         s3_folder_path_base (str): base folder path within S3 bucket for charts data.
-        timespan (str):
-        data_format (str):
+        timespan (str): chart timespan
+        data_format (str): (`json` or `csv`)
 
     Returns:
 
     """
-    # get S3 file paths (appends chart name) and URLs to request chart data from `blockchain.com`
+    # get S3 file paths (w/ chart names) and URLs to request chart data from `blockchain.com`
     chart_names, url_bases = get_chart_names_url_bases()
     url_suffix = "?timespan={0}&format={1}".format(timespan, data_format)
     s3_file_paths = [s3_folder_path_base + cn + '/' for cn in chart_names]

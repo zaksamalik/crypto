@@ -21,6 +21,7 @@ __Repository Structure__
 │   ├── blockchain_com
 │   │   ├── helpers.py
 │   │   └── scripts
+│   │       ├── all_charts.py
 │   │       └── create_s3_buckets.py
 │   └── crypto_compare
 │       ├── helpers.py
@@ -34,6 +35,7 @@ __Repository Structure__
 │   └── helpers.py
 └── helpers
     ├── __init__.py
-    └── aws.py
+    ├── aws.py
+    └── general.py
 ```
 
