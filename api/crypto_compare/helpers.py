@@ -62,6 +62,7 @@ class CCHistoricalOHLCV:
         - `responses_to_df`
 
     """
+
     def __init__(self, app_name, request_type, fsyms, tsyms, limit, all_data=False, exchange='CCCAGG'):
         """Instantiates class with passed variables & sets values for non-passed variables to be used in functions.
 

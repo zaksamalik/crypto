@@ -8,7 +8,7 @@ This package provides a toolkit for managing cryptocurrency-related data. The co
 
 __Sub-packages__
 * `api` - interact with various APIs
-* `etl_spark` - (PySpark) normalize data post-extraction (focus on `T` & `L` stages of `ETL`)
+* `etl_spark` - (PySpark) normalize data for analysis
 * `helpers` - repo-wide helper modules 
 
 

@@ -2,14 +2,13 @@
 TODO: docstrings
 """
 import json
-import re
-from datetime import datetime
 
 import pandas as pd
 import requests as req
 
 from api.crypto_compare.helpers import CCEndpointBases
 from helpers.aws import df_to_s3
+from helpers.general import get_utc_ts_str
 
 
 def get_coin_list():
@@ -33,7 +32,7 @@ def get_coin_list():
 
 def main():
     # get timestamp for filename
-    file_ts = re.sub('[:. ]', '_', datetime.utcnow().__str__())
+    file_ts = get_utc_ts_str()
     # get coin list df
     coin_list = get_coin_list()
     coin_list['request_timestamp'] = file_ts
