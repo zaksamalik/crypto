@@ -24,8 +24,8 @@ def get_spark_context(d_mem, e_mem, aws_profile=None):
     spark_config = (SparkConf()
                     .set('spark.driver.memory', d_mem)
                     .set('spark.executor.memory', e_mem)
-                    .set('spark.driver.extraClassPath', './jars/hadoop-aws-2.7.3.jar')
-                    )
+                    .set('spark.serializer', 'org.apache.spark.serializer.KryoSerializer')
+                    .set('spark.driver.extraClassPath', os.environ['HADOOP_JAR']))
     sc = SparkContext(conf=spark_config)
 
     # parse AWS credentials and pass to hadoop configuration
