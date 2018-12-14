@@ -3,8 +3,8 @@
 
 Attributes:
     -`df_to_s3`: function to upload Pandas DataFrame to AWS S3.
+    - `json_to_s3`: function to upload API response(s) as JSON objects to S3.
 """
-
 import json
 import re
 
@@ -12,33 +12,6 @@ import boto3
 import pyarrow as pa
 import pyarrow.parquet as pq
 from s3fs import S3FileSystem
-
-
-def create_s3_folders(bucket_name, s3_folder_names):
-    """ Creates folders within S3 bucket if they don't exist.
-
-    Args:
-        bucket_name (str): Name of target S3 bucket.
-        s3_folder_names (list): List containing names of target sub-folders to be created within bucket.
-
-    Returns: Creates sub-folders within target S3 bucket.
-
-    """
-    s3 = S3FileSystem()
-    # confirm bucket exists
-    assert s3.exists(bucket_name), "Target bucket does not exist! Please setup bucket in S3 Management Console."
-    # create folders in bucket if they don't exist
-    folders_created = []
-    for folder in s3_folder_names:
-        if not s3.exists(bucket_name + folder):
-            s3.mkdir(bucket_name + folder)
-            folders_created.append('`' + folder + '`')
-    if not folders_created:
-        print("~~~ All folders already exist in bucket! ~~~")
-    else:
-        print("~~~ Successfully created {0} folders in bucket {1}: {2} ~~~".format(len(folders_created),
-                                                                                   bucket_name,
-                                                                                   ", ".join(folders_created)))
 
 
 def df_to_s3(df, target_bucket, folder_path, file_name):
@@ -64,19 +37,35 @@ def df_to_s3(df, target_bucket, folder_path, file_name):
     print("`df_to_s3`: Successfully uploaded to S3 bucket: `{}`".format(re.sub('s3://', '', output_file)))
 
 
-def json_to_s3(data, target_bucket, folder_path, file_name):
-    """Dump JSON object to S3 bucket.
+def json_to_s3(response, target_bucket, file_path, file_name, multiple):
+    """Upload API response(s) to S3 as JSON object(s).
+
+    If `multiple` set to true --> `response`, `file_path`, and `file_name` should be lists.
+        > function will iteratively upload each response to S3.
 
     Args:
-        data (dict): dictionary to be dumped as JSON object to S3.
-        target_bucket (str): name of S3 bucket
-        folder_path (str): sub-folder path in bucket
-        file_name (str): name for JSON file
+        response (str or list): contains responses
+        target_bucket (str): name of target S3 bucket
+        file_path (str or list): contains file paths (excluding file name) where data will be written
+        file_name (str or list): name of `.json` file.
+        multiple (bool): Whether to write multiple responses.
 
-    Returns: Dumps dict as JSON object to S3 bucket.
+    Returns:
 
     """
-    # TODO: create folder if not exists.
     s3 = boto3.resource('s3')
-    obj = s3.Object(target_bucket, folder_path + file_name + '.json')
-    obj.put(Body=json.dumps(data))
+    # handle multiple responses passed as list
+    if multiple:
+        # check input types
+        assert all([type(response) is list, type(file_path) is list, type(
+            file_name) is list]), "`multiple` set to true but `response`, `file_path`, and `file_name` are not lists."
+        for resp, resp_fp, resp_ts in zip(response, file_path, file_name):
+            data = json.loads(resp)
+            obj = s3.Object(target_bucket, resp_fp + resp_ts + '.json')
+            obj.put(Body=json.dumps(data))
+        print(f"~~~ Successfully dumped {len(response)} files to S3 bucket `{target_bucket}`! ~~~")
+    else:
+        data = json.loads(response)
+        obj = s3.Object(target_bucket, file_path + file_name + '.json')
+        obj.put(Body=json.dumps(data))
+        print(f"~~~ Successfully dumped 1 file to S3 bucket `{target_bucket}`! ~~~")
