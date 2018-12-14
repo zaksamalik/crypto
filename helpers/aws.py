@@ -5,8 +5,10 @@ Attributes:
     -`df_to_s3`: function to upload Pandas DataFrame to AWS S3.
 """
 
+import json
 import re
 
+import boto3
 import pyarrow as pa
 import pyarrow.parquet as pq
 from s3fs import S3FileSystem
@@ -34,9 +36,9 @@ def create_s3_folders(bucket_name, s3_folder_names):
     if not folders_created:
         print("~~~ All folders already exist in bucket! ~~~")
     else:
-        print("~~~ Successfully created {0} folders in bucket: {1}: {2} ~~~".format(len(folders_created),
-                                                                                 bucket_name,
-                                                                                 ", ".join(folders_created)))
+        print("~~~ Successfully created {0} folders in bucket {1}: {2} ~~~".format(len(folders_created),
+                                                                                   bucket_name,
+                                                                                   ", ".join(folders_created)))
 
 
 def df_to_s3(df, target_bucket, folder_path, file_name):
@@ -60,3 +62,21 @@ def df_to_s3(df, target_bucket, folder_path, file_name):
                         root_path=output_file,
                         filesystem=s3)
     print("`df_to_s3`: Successfully uploaded to S3 bucket: `{}`".format(re.sub('s3://', '', output_file)))
+
+
+def json_to_s3(data, target_bucket, folder_path, file_name):
+    """Dump JSON object to S3 bucket.
+
+    Args:
+        data (dict): dictionary to be dumped as JSON object to S3.
+        target_bucket (str): name of S3 bucket
+        folder_path (str): sub-folder path in bucket
+        file_name (str): name for JSON file
+
+    Returns: Dumps dict as JSON object to S3 bucket.
+
+    """
+    # TODO: create folder if not exists.
+    s3 = boto3.resource('s3')
+    obj = s3.Object(target_bucket, folder_path + file_name + '.json')
+    obj.put(Body=json.dumps(data))
