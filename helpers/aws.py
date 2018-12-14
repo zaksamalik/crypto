@@ -6,9 +6,37 @@ Attributes:
 """
 
 import re
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 from s3fs import S3FileSystem
+
+
+def create_s3_folders(bucket_name, s3_folder_names):
+    """ Creates folders within S3 bucket if they don't exist.
+
+    Args:
+        bucket_name (str): Name of target S3 bucket.
+        s3_folder_names (list): List containing names of target sub-folders to be created within bucket.
+
+    Returns: Creates sub-folders within target S3 bucket.
+
+    """
+    s3 = S3FileSystem()
+    # confirm bucket exists
+    assert s3.exists(bucket_name), "Target bucket does not exist! Please setup bucket in S3 Management Console."
+    # create folders in bucket if they don't exist
+    folders_created = []
+    for folder in s3_folder_names:
+        if not s3.exists(bucket_name + folder):
+            s3.mkdir(bucket_name + folder)
+            folders_created.append('`' + folder + '`')
+    if not folders_created:
+        print("~~~ All folders already exist in bucket! ~~~")
+    else:
+        print("~~~ Successfully created {0} folders in bucket: {1}: {2} ~~~".format(len(folders_created),
+                                                                                 bucket_name,
+                                                                                 ", ".join(folders_created)))
 
 
 def df_to_s3(df, target_bucket, folder_path, file_name):

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""Contains helpers for interacting with CryptoCompare api.
+"""Contains helpers for interacting with CryptoCompare API.
 
 See documentation: https://min-api.cryptocompare.com/documentation
 """
