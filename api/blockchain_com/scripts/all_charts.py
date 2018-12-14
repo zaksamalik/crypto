@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*
 """Gets all chart data from `blockchain.com` and loads it to S3.
-# TODO: handle different timestamps? & data formats (csv --> DF --> parquet?)
+TODO: handle different timestamps? & data formats (csv --> DF --> parquet?)
 """
 
 import asyncio
@@ -8,7 +8,7 @@ import json
 
 import aiohttp
 
-from api.blockchain_com.scripts.create_s3_buckets import get_chart_names_url_bases
+from api.blockchain_com.helpers import get_chart_names_url_bases
 from helpers.aws import json_to_s3
 from helpers.general import get_utc_ts_str
 
