@@ -7,12 +7,15 @@ See documentation: https://min-api.cryptocompare.com/documentation
 import asyncio
 import itertools
 import json
+import re
 import time
 from datetime import datetime, timezone
 
 import aiohttp
 import pandas as pd
 from asyncio_throttle import Throttler
+
+from helpers.aws import df_to_s3
 
 
 class CCEndpointBases:
@@ -63,7 +66,7 @@ class CCHistoricalOHLCV:
 
     """
 
-    def __init__(self, app_name, request_type, fsyms, tsyms, limit, all_data=False, exchange='CCCAGG'):
+    def __init__(self, app_name, request_type, fsyms, tsyms, limit, s3_folder_path, all_data=False, exchange='CCCAGG'):
         """Instantiates class with passed variables & sets values for non-passed variables to be used in functions.
 
         Args:
@@ -72,6 +75,7 @@ class CCHistoricalOHLCV:
             fsyms (list): List of cryptocurrency symbols of interest
             tsyms (list): List of currency symbols to convert into
             limit (int): The number of data points to return (max 2000)
+            s3_folder_path (str): path for file
             all_data (bool): Whether to return all historical data
             exchange (str): Name of crypto exchange to obtain data (default is CryptoCompare's aggregate `CCCAGG`)
         """
@@ -80,6 +84,7 @@ class CCHistoricalOHLCV:
         self.fsyms = fsyms
         self.tsyms = tsyms
         self.limit = limit
+        self.s3_folder_path = s3_folder_path
         self.all_data = all_data
         self.exchange = exchange
         # ~~~ Not Passed During Instantiation ~~~
@@ -194,6 +199,14 @@ class CCHistoricalOHLCV:
 
         self.response_df = pd.concat(response_df_list)
 
+    def upload_to_s3(self):
+        # write to S3
+        file_name = re.sub('[ :]', '_', pd.to_datetime(self.last_utc_close_ts, unit='s').__str__())
+        df_to_s3(df=self.response_df.astype('str'),
+                 target_bucket='data.crypto',
+                 folder_path=self.s3_folder_path,
+                 file_name=file_name)
+
     def run(self):
         """Run all functions.
 
@@ -218,3 +231,5 @@ class CCHistoricalOHLCV:
         print("~~~ Historical OHLCV data pulled in: %s minutes ~~~" % round((time.time() - start_time) / 60, 2))
 
         self.responses_to_df()
+
+        self.upload_to_s3()
