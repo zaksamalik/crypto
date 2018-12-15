@@ -11,7 +11,7 @@ def main():
                                          fsyms=list(coin_list['Symbol']),
                                          tsyms=['USD', 'BTC'],
                                          limit=2000,
-                                         s3_folder_path='api/crypto_compare/historical_ohlcv/daily/all',
+                                         s3_folder_path='api/crypto_compare/historical/ohlcv/daily',
                                          all_data=True,
                                          exchange='CCCAGG')
     historical_daily.run()

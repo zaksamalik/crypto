@@ -39,7 +39,7 @@ def main():
     # upload to S3
     df_to_s3(df=coin_list,
              target_bucket='data.crypto',
-             folder_path='api/crypto_compare/all/coinlist',
+             folder_path='api/crypto_compare/other/coinlist',
              file_name=file_ts)
 
 
