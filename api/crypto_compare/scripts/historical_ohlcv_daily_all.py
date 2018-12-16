@@ -6,12 +6,12 @@ def main():
     # get list --> fsyms
     coin_list = get_coin_list()
     # get all historical daily data
-    historical_daily = CCHistoricalOHLCV(app_name='crypto_learning',
-                                         request_type='HISTORICAL_DAILY_OHLCV',
+    historical_daily = CCHistoricalOHLCV(s3_folder_path='api/crypto_compare/historical/ohlcv/daily',
+                                         app_name='crypto_learning',
+                                         request_type='HISTORICAL_OHLCV_DAILY',
                                          fsyms=list(coin_list['Symbol']),
                                          tsyms=['USD', 'BTC'],
                                          limit=2000,
-                                         s3_folder_path='api/crypto_compare/historical/ohlcv/daily',
                                          all_data=True,
                                          exchange='CCCAGG')
     historical_daily.run()
