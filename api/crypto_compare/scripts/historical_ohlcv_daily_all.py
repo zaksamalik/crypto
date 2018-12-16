@@ -11,7 +11,7 @@ def main():
                                          app_name='crypto_learning',
                                          request_type='HISTORICAL_OHLCV_DAILY',
                                          fsyms=list(coin_list['Symbol']),
-                                         tsyms=['USD', 'BTC'],
+                                         tsyms=['USD', 'BTC', 'ETH'],
                                          limit=2000,
                                          all_data=True,
                                          exchange='CCCAGG')

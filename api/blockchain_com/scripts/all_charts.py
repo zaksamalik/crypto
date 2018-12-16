@@ -3,6 +3,7 @@
 TODO: handle different data formats (csv --> DF --> parquet?)
 """
 import asyncio
+import time
 
 import aiohttp
 
@@ -30,6 +31,7 @@ def get_chart_data(s3_folder_path_base='api/blockchain.com/charts/', timespan='a
 
     # asynchronously request chart data from `blockchain.com`
     print("~~~ Requesting blockchain.com chart data ~~~")
+    start_time = time.now()
     req_ts = get_utc_ts_str()
     responses = []
     resp_file_paths = []
@@ -49,8 +51,8 @@ def get_chart_data(s3_folder_path_base='api/blockchain.com/charts/', timespan='a
     loop.run_until_complete(get_charts_data(s3_file_paths, chart_urls))
 
     assert len(responses) == len(chart_names), "~~~ Data for {0} of {1} charts returned. ~~~".format(len(responses),
-                                                                                                    len(chart_names))
-    print("~~~ Successfully pulled all blockchain.com chart data! ~~~")
+                                                                                                     len(chart_names))
+    print("~~~ Successfully pulled all chart data in : %s minutes ~~~" % round((time.time() - start_time) / 60, 2))
 
     return responses, resp_file_paths, resp_timestamps
 

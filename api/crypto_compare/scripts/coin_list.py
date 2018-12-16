@@ -40,7 +40,8 @@ def main():
     df_to_s3(df=coin_list,
              target_bucket='data.crypto',
              folder_path='api/crypto_compare/other/coinlist',
-             file_name=file_ts)
+             file_name=file_ts,
+             print_message=True)
 
 
 if __name__ == '__main__':

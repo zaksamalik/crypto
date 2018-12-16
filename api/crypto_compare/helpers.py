@@ -61,7 +61,6 @@ class CCHistoricalOHLCV:
         - `get_url`
         - `get_pairs`
         - `get_historical`
-        - `responses_to_df`
 
     """
 
@@ -174,6 +173,7 @@ class CCHistoricalOHLCV:
 
         fsym = pair[0]
         tsym = pair[1]
+        request_ts = datetime.utcnow().__str__()
 
         # handle `all_data_non_daily` = True
         if self.all_data_non_daily:
@@ -197,18 +197,20 @@ class CCHistoricalOHLCV:
                 else:
                     break
 
-            # concatenate DataFrames
-            response_df_concat = pd.concat(response_dfs)
-            response_df_concat['fsym'] = fsym
-            response_df_concat['tsym'] = tsym
+            if response_dfs:
+                # concatenate DataFrames
+                response_df_concat = pd.concat(response_dfs)
+                response_df_concat['fsym'] = fsym
+                response_df_concat['tsym'] = tsym
+                response_df_concat['request_timestamp'] = request_ts
 
-            # to S3
-            file_name = fsym + '-' + tsym + '/' + self.file_name_base
-            df_to_s3(df=response_df_concat.astype('str'),
-                     target_bucket=self.s3_bucket,
-                     folder_path=self.s3_folder_path,
-                     file_name=file_name,
-                     print_message=False)
+                # to S3
+                file_name = fsym + '-' + tsym + '/' + self.file_name_base
+                df_to_s3(df=response_df_concat.astype('str'),
+                         target_bucket=self.s3_bucket,
+                         folder_path=self.s3_folder_path,
+                         file_name=file_name,
+                         print_message=False)
 
         # handle all other requests
         else:
@@ -220,6 +222,7 @@ class CCHistoricalOHLCV:
                     df = pd.DataFrame(data)
                     df['fsym'] = fsym
                     df['tsym'] = tsym
+                    df['request_timestamp'] = request_ts
                     df_filtered = df[df['time'] <= self.last_utc_close_ts]
                     file_name = fsym + '-' + tsym + '/' + self.file_name_base
                     df_to_s3(df=df_filtered.astype('str'),
@@ -228,7 +231,7 @@ class CCHistoricalOHLCV:
                              file_name=file_name,
                              print_message=False)
 
-        return 1
+        return 0
 
     def run(self):
         """Run all functions.
