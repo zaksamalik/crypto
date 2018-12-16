@@ -68,19 +68,23 @@ class CCHistoricalOHLCV:
 
     """
 
-    def __init__(self, s3_folder_path, app_name, request_type, fsyms, tsyms, limit, all_data=False, exchange='CCCAGG'):
+    def __init__(self,
+                 s3_bucket, s3_folder_path,
+                 app_name, request_type, fsyms, tsyms, limit, all_data=False, exchange='CCCAGG'):
         """Instantiates class with passed variables & sets values for non-passed variables to be used in functions.
 
         Args:
-            s3_folder_path (str): S3 path to write results of API pull as parquet file.
+            s3_bucket (str): Name of S3 bucket to write results of API pull as parquet file.
+            s3_folder_path (str): S3 path within bucket to write result.
             app_name (str): Name of application (CryptoCompare recommends this be sent)
             request_type (str): Name of the URL endpoint 'base' from instantiated `EndpointBase` class
-            fsyms (list): List of cryptocurrency symbols of interest
+            fsyms (list): List of crypto symbols of interest
             tsyms (list): List of currency symbols to convert into
             limit (int): The number of data points to return (max 2000)
             all_data (bool): Whether to return all historical data
             exchange (str): Name of crypto exchange to obtain data (default is CryptoCompare's aggregate `CCCAGG`)
         """
+        self.s3_bucket = s3_bucket
         self.s3_folder_path = s3_folder_path
         self.app_name = app_name
         self.request_type = request_type
@@ -251,14 +255,14 @@ class CCHistoricalOHLCV:
         # write to S3
         file_name = re.sub('[ :]', '_', pd.to_datetime(self.last_utc_close_ts, unit='s').__str__())
         df_to_s3(df=self.response_df.astype('str'),
-                 target_bucket='data.crypto',
+                 target_bucket=self.s3_bucket,
                  folder_path=self.s3_folder_path,
                  file_name=file_name)
 
     def run(self):
         """Run all functions.
 
-        Returns: results of all functions called.
+        Returns: API data written as parquet files to target AWS S3 bucket + path.
 
         """
         self.run_validation()

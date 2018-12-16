@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*
 """Gets all chart data from `blockchain.com` and loads it to S3.
-TODO: handle different timestamps? & data formats (csv --> DF --> parquet?)
+TODO: handle different data formats (csv --> DF --> parquet?)
 """
 import asyncio
 
@@ -12,7 +12,7 @@ from helpers.general import get_utc_ts_str
 
 
 def get_chart_data(s3_folder_path_base='api/blockchain.com/charts/', timespan='all', data_format='json'):
-    """
+    """Get all data for all charts from `blockchain.com` API.
 
     Args:
         s3_folder_path_base (str): base folder path within S3 bucket for charts data.
