@@ -4,7 +4,6 @@
 See documentation: https://min-api.cryptocompare.com/documentation
 """
 
-import asyncio
 import itertools
 import json
 import re
@@ -12,10 +11,8 @@ import time
 from datetime import datetime, timezone
 from multiprocessing import Pool
 
-import aiohttp
 import pandas as pd
 import requests as req
-from asyncio_throttle import Throttler
 
 from helpers.aws import df_to_s3
 
@@ -96,14 +93,11 @@ class CCHistoricalOHLCV:
         # ~~~ Not Passed During Instantiation ~~~
         self.endpoint_bases = CCEndpointBases()
         self.last_utc_close_ts = None
+        self.file_name_base = None
         self.url = None
         self.pairs = None
-        self.responses = []
-        self.response_pairs = []
         self.all_data_non_daily = self.all_data & (self.request_type in ['HISTORICAL_OHLCV_HOURLY',
                                                                          'HISTORICAL_OHLCV_MINUTE'])
-        self.responses_with_pairs = None  # used for `get_historical_all_non_daily` when `all_data_non_daily`
-        self.response_df = None
 
     def run_validation(self):
         """Checks that input variable values are valid.
@@ -138,6 +132,7 @@ class CCHistoricalOHLCV:
         utc_current = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
         utc_previous = utc_current - pd.DateOffset(days=1)
         self.last_utc_close_ts = utc_previous.timestamp().__int__()
+        self.file_name_base = re.sub('[ :]', '_', pd.to_datetime(self.last_utc_close_ts, unit='s').__str__())
 
     def get_url(self):
         """Get URL endpoint with all parameter values except `fsym` and `tsym`.
@@ -147,7 +142,7 @@ class CCHistoricalOHLCV:
         """
         url = self.endpoint_bases.__getattribute__(self.request_type)
         if self.all_data:
-            if self.request_type == 'HISTORICAL_DAILY_OHLCV':
+            if self.request_type == 'HISTORICAL_OHLCV_DAILY':
                 url = url + "&allData=true"
             else:
                 url = url + "&limit=2000&toTs={2}"
@@ -164,100 +159,76 @@ class CCHistoricalOHLCV:
         """
         self.pairs = itertools.product(self.fsyms, self.tsyms)
 
-    def get_historical_all_non_daily(self, pair):
-        """Get all non-daily historical OHLCV data when `all_data_non_daily` = True.
+    def get_historical_ohlcv(self, pair):
+        """Get historical OHLCV data and upload to S3.
+
            Cannot pass `allData` parameter to CryptoCompare API for non-daily historical OHLCV data -->
-           Need to iterate from latest UTC timestamp backwards in batches of 2000.
+           When `all_data_non_daily` = True --> iterate from latest UTC timestamp backwards in batches of 2000.
 
         Args:
             pair (tuple): e.g. ('BTC', 'USD')
 
-        Returns: appends successful HTTP responses to `self.responses` and corresponding pairs to `self.response_pairs`
+        Returns: Uploads pair-level response (concatenated if `all_data_non_daily` = True) to S3.
 
         """
-        assert self.all_data_non_daily, "Called `get_historical_all_non_daily` when `all_data_non_daily` is NOT True."
 
-        responses = []
-        response_pairs = []
-        # start loop at last UTC close
-        to_ts = self.last_utc_close_ts
-        while True:
-            resp = req.get(self.url.format(pair[0], pair[1], to_ts))
+        fsym = pair[0]
+        tsym = pair[1]
+
+        # handle `all_data_non_daily` = True
+        if self.all_data_non_daily:
+            response_dfs = []
+            # start loop at last UTC close
+            to_ts = self.last_utc_close_ts
+            while True:
+                resp = req.get(self.url.format(fsym, tsym, to_ts))
+                if resp.status_code == 200:
+                    content = json.loads(resp.content.decode('utf-8'))
+                    data = content['Data']
+                    # stop when all records in response have `0` in `volumefrom`
+                    all_no_volume = all([x['volumefrom'] == 0 for x in data])
+                    if all_no_volume:
+                        break
+                    else:
+                        df = pd.DataFrame(data)
+                        df_filtered = df[df['time'] <= self.last_utc_close_ts]
+                        response_dfs.append(df_filtered)
+                        to_ts = content['TimeFrom']
+                else:
+                    break
+
+            # concatenate DataFrames
+            response_df_concat = pd.concat(response_dfs)
+            response_df_concat['fsym'] = fsym
+            response_df_concat['tsym'] = tsym
+
+            # to S3
+            file_name = fsym + '-' + tsym + '/' + self.file_name_base
+            df_to_s3(df=response_df_concat.astype('str'),
+                     target_bucket=self.s3_bucket,
+                     folder_path=self.s3_folder_path,
+                     file_name=file_name,
+                     print_message=False)
+
+        # handle all other requests
+        else:
+            resp = req.get(self.url.format(fsym, tsym))
             if resp.status_code == 200:
                 content = json.loads(resp.content.decode('utf-8'))
                 data = content['Data']
-                # stop when all records in response have `0` in `volumefrom`
-                all_no_volume = all([x['volumefrom'] == 0 for x in data])
-                if all_no_volume:
-                    break
-                else:
-                    responses.append(content)
-                    response_pairs.append(pair)
-                    to_ts = content['TimeFrom']
-            else:
-                break
-        return zip(responses, response_pairs)
-
-    async def get_historical(self):
-        """Gets historical OHLCV data from CryptoCompare api.
-
-        Returns: appends successful HTTP responses to `self.responses` and corresponding pairs to `self.response_pairs`
-
-        """
-        assert not self.all_data_non_daily, "Called `get_historical` when `all_data_non_daily` IS True."
-        # CryptoCompare has limit of 2000 requests per minute
-        throttler = Throttler(rate_limit=1900, period=60)
-        async with aiohttp.ClientSession() as session:
-            for pair in self.pairs:
-                async with throttler:
-                    async with session.get(self.url.format(pair[0], pair[1])) as resp:
-                        if resp.status == 200:
-                            self.responses.append(await resp.text())
-                            self.response_pairs.append(pair)
-                    await asyncio.sleep(0.01)
-
-    def responses_to_df(self):
-        """Converts api response contents into concatenated single Pandas DataFrame.
-
-        Returns: `self.response_df` set to concatenated Pandas DataFrame containing api response contents.
-
-        """
-        # handle `all_data_non_daily` = True
-        data_df_list = []
-        if self.all_data_non_daily:
-            for rwp in self.responses_with_pairs:
-                rwp_unp = list(rwp)
-                for rwp_i in rwp_unp:
-                    data = rwp_i[0]['Data']
-                    if data:
-                        data_df = pd.DataFrame(data)
-                        data_df['fsym'] = rwp_i[1][0]
-                        data_df['tsym'] = rwp_i[1][1]
-                        # ensure results are on or before last UTC close
-                        data_df_filtered = data_df[data_df['time'] <= self.last_utc_close_ts]
-                        data_df_list.append(data_df_filtered)
-        else:
-            for response, pair in list(zip(self.responses, self.response_pairs)):
-                data = json.loads(response)['Data']
                 if data:
-                    data_df = pd.DataFrame(data)
-                    data_df['fsym'] = pair[0]
-                    data_df['tsym'] = pair[1]
-                    # ensure results are on or before last UTC close
-                    data_df_filtered = data_df[data_df['time'] <= self.last_utc_close_ts]
-                    data_df_list.append(data_df_filtered)
+                    df = pd.DataFrame(data)
+                    df['fsym'] = fsym
+                    df['tsym'] = tsym
+                    df_filtered = df[df['time'] <= self.last_utc_close_ts]
+                    file_name = fsym + '-' + tsym + '/' + self.file_name_base
+                    df_to_s3(df=df_filtered.astype('str'),
+                             target_bucket=self.s3_bucket,
+                             folder_path=self.s3_folder_path,
+                             file_name=file_name,
+                             print_message=False)
 
-        assert len(data_df_list) > 0, "~~~ None of the successful responses contain new data! ~~~"
-
-        self.response_df = pd.concat(data_df_list)
-
-    def upload_to_s3(self):
-        # write to S3
-        file_name = re.sub('[ :]', '_', pd.to_datetime(self.last_utc_close_ts, unit='s').__str__())
-        df_to_s3(df=self.response_df.astype('str'),
-                 target_bucket=self.s3_bucket,
-                 folder_path=self.s3_folder_path,
-                 file_name=file_name)
+        return 1
 
     def run(self):
         """Run all functions.
@@ -275,15 +246,6 @@ class CCHistoricalOHLCV:
 
         print("~~~ Pulling Historical OHLCV data ~~~")
         start_time = time.time()
-        # handle `all_data_non_daily` = True
-        if self.all_data_non_daily:
-            pool = Pool()
-            self.responses_with_pairs = pool.map(self.get_historical_all_non_daily, self.pairs)
-        else:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(self.get_historical())
+        pool = Pool()
+        pool.map(self.get_historical_ohlcv, self.pairs)
         print("~~~ Historical OHLCV data pulled in: %s minutes ~~~" % round((time.time() - start_time) / 60, 2))
-
-        self.responses_to_df()
-
-        self.upload_to_s3()

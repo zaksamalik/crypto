@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 from s3fs import S3FileSystem
 
 
-def df_to_s3(df, target_bucket, folder_path, file_name):
+def df_to_s3(df, target_bucket, folder_path, file_name, print_message):
     """Converts Pandas DataFrame to PyArrow table --> writes parquet file to S3 bucket.
 
     Args:
@@ -22,6 +22,7 @@ def df_to_s3(df, target_bucket, folder_path, file_name):
         target_bucket (str): name of S3 bucket
         folder_path (str): sub-folder path in bucket
         file_name (str): name for parquet file
+        print_message (bool): whether to print confirmation of upload to S3.
 
     Returns: Writes PandasData frame as parquet file to S3 bucket.
 
@@ -34,7 +35,8 @@ def df_to_s3(df, target_bucket, folder_path, file_name):
     pq.write_to_dataset(table=pa_tbl,
                         root_path=output_file,
                         filesystem=s3)
-    print("`df_to_s3`: Successfully uploaded to S3 bucket: `{}`".format(re.sub('s3://', '', output_file)))
+    if print_message:
+        print("`df_to_s3`: Successfully uploaded to S3 bucket: `{}`".format(re.sub('s3://', '', output_file)))
 
 
 def json_to_s3(response, target_bucket, file_path, file_name, multiple):

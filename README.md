@@ -21,12 +21,14 @@ __Repository Structure__
 │   ├── blockchain_com
 │   │   ├── helpers.py
 │   │   └── scripts
-│   │       ├── all_charts.py
-│   │       └── create_s3_buckets.py
+│   │       └── all_charts.py
 │   └── crypto_compare
 │       ├── helpers.py
 │       └── scripts
-│           └── coin_list.py
+│           ├── coin_list.py
+│           ├── historical_ohlcv_daily_all.py
+│           ├── historical_ohlcv_hourly_all.py
+│           └── historical_ohlcv_minute_all.py
 ├── etl_spark
 │   ├── __init__.py
 │   ├── crypto_compare
