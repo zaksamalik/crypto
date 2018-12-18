@@ -12,9 +12,8 @@ from multiprocessing import Pool
 
 import pandas as pd
 import requests as req
-from pyspark.sql.functions import col
 
-from etl_spark.helpers import get_spark_context
+from helpers.aws import df_to_s3
 
 
 class CCEndpointBases:
@@ -53,7 +52,7 @@ class CCEndpointBases:
 class CCHistoricalOHLCV:
     """Class to interact with CryptoCompare `HISTORICAL_X_OHLCV` endpoints.
 
-    Pulls historical OHLCV data on a daily, hourly, and minute basis from CryptoCompare api.
+    Pulls historical OHLCV data on a daily, hourly, and minute basis from CryptoCompare API.
 
     `run` function executes all functions in the following order:
         - `run_validation`
@@ -97,7 +96,6 @@ class CCHistoricalOHLCV:
         self.file_name_base = None
         self.url = None
         self.pairs = None
-        self.ohlcv_data = None
 
     def run_validation(self):
         """Checks that input variable values are valid.
@@ -132,7 +130,8 @@ class CCHistoricalOHLCV:
         utc_current = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
         utc_previous = utc_current - pd.DateOffset(days=1)
         self.last_utc_close_ts = utc_previous.timestamp().__int__()
-        self.file_name_base = re.sub('[ :]', '_', pd.to_datetime(self.last_utc_close_ts, unit='s').__str__())
+        self.s3_folder_path = (self.s3_folder_path + '/_' +
+                               re.sub('[ :]', '_', pd.to_datetime(self.last_utc_close_ts, unit='s').__str__()))
 
     def get_url(self):
         """Get URL endpoint with all parameter values except `fsym` and `tsym`.
@@ -160,7 +159,7 @@ class CCHistoricalOHLCV:
         self.pairs = itertools.product(self.fsyms, self.tsyms)
 
     def get_historical_ohlcv(self, pair):
-        """Get historical OHLCV data.
+        """Get historical OHLCV data from CryptoCompare API and upload as Parquet file to S3.
 
            Cannot pass `allData` parameter to CryptoCompare API for non-daily historical OHLCV data -->
            When `all_data_non_daily` = True --> iterate from latest UTC timestamp backwards in batches of 2000.
@@ -168,7 +167,7 @@ class CCHistoricalOHLCV:
         Args:
             pair (tuple): e.g. ('BTC', 'USD')
 
-        Returns: API response JSON.
+        Returns: Uploads API response data as Parquet file to S3.
 
         """
 
@@ -199,9 +198,15 @@ class CCHistoricalOHLCV:
             if data_list:
                 # flatten list
                 data_all = [x for y in data_list for x in y]
-                for item in data_all:
-                    item.update({"fsym": fsym, "tsym": tsym, "request_timestamp": request_ts})
-                return data_all
+                df = pd.DataFrame(data_all)
+                df['fsym'] = fsym
+                df['tsym'] = tsym
+                df['request_timestamp'] = request_ts
+                df_to_s3(df=df.astype('str'),
+                         target_bucket=self.s3_bucket,
+                         folder_path=self.s3_folder_path,
+                         file_name=f"_{fsym}-{tsym}",
+                         print_message=False)
 
         # handle all other requests
         else:
@@ -209,12 +214,19 @@ class CCHistoricalOHLCV:
             if resp.status_code == 200:
                 data = resp.json()['Data']
                 if data:
-                    for item in data:
-                        item.update({"fsym": fsym, "tsym": tsym, "request_timestamp": request_ts})
-                    return data
+                    df = pd.DataFrame(data)
+                    df['fsym'] = fsym
+                    df['tsym'] = tsym
+                    df['request_timestamp'] = request_ts
+                    df_to_s3(df=df.astype('str'),
+                             target_bucket=self.s3_bucket,
+                             folder_path=self.s3_folder_path,
+                             file_name=f"_{fsym}-{tsym}",
+                             print_message=False)
+        return 0
 
     def run_get_historical_ohlcv(self):
-        """
+        """Runs `get_historical_ohlcv` over all `pairs` in parallel.
 
         Returns:
 
@@ -222,28 +234,8 @@ class CCHistoricalOHLCV:
         print("~~~ Pulling Historical OHLCV data ~~~")
         start_time = time.time()
         pool = Pool()
-        ohlcv_data_list = pool.map(self.get_historical_ohlcv, self.pairs)
+        pool.map(self.get_historical_ohlcv, self.pairs)
         print("~~~ Historical OHLCV data pulled in: %s minutes ~~~" % round((time.time() - start_time) / 60, 2))
-        self.ohlcv_data = [x for y in ohlcv_data_list if y for x in y]
-
-    def upload_to_s3(self):
-        """
-
-        Returns:
-
-        """
-        # load API responses into Spark DataFrame
-        sc, sql_context = get_spark_context(d_mem='3g', e_mem='3g', aws_profile='default')
-        ohlcv_ll = sc.parallelize(self.ohlcv_data)
-        ohlcv_df = sql_context.read.json(ohlcv_ll)
-        ohlcv_df_cast = ohlcv_df.select(*(col(c).cast('string').alias(c) for c in ohlcv_df.columns))
-
-        # write as parquet file to S3
-        (ohlcv_df_cast
-         .cache()
-         .write
-         .option('compression', 'snappy')
-         .parquet(f"s3n://{self.s3_bucket}/{self.s3_folder_path}/{self.file_name_base}.parquet"))
 
     def run(self):
         """Run all functions.
@@ -260,5 +252,3 @@ class CCHistoricalOHLCV:
         self.get_pairs()
 
         self.run_get_historical_ohlcv()
-
-        self.upload_to_s3()
