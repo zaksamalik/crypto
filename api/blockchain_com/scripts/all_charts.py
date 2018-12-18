@@ -31,7 +31,7 @@ def get_chart_data(s3_folder_path_base='api/blockchain.com/charts/', timespan='a
 
     # asynchronously request chart data from `blockchain.com`
     print("~~~ Requesting blockchain.com chart data ~~~")
-    start_time = time.now()
+    start_time = time.time()
     req_ts = get_utc_ts_str()
     responses = []
     resp_file_paths = []

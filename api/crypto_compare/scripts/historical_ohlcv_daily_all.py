@@ -7,7 +7,7 @@ def main():
     coin_list = get_coin_list()
     # get all historical daily data
     historical_daily = CCHistoricalOHLCV(s3_bucket='data.crypto',
-                                         s3_folder_path='api/crypto_compare/historical/ohlcv/daily',
+                                         s3_folder_path='api/cryptocompare.com/historical/ohlcv/daily',
                                          app_name='crypto_learning',
                                          request_type='HISTORICAL_OHLCV_DAILY',
                                          fsyms=list(coin_list['Symbol']),

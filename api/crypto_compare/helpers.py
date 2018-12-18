@@ -5,7 +5,6 @@ See documentation: https://min-api.cryptocompare.com/documentation
 """
 
 import itertools
-import json
 import re
 import time
 from datetime import datetime, timezone
@@ -13,8 +12,9 @@ from multiprocessing import Pool
 
 import pandas as pd
 import requests as req
+from pyspark.sql.functions import col
 
-from helpers.aws import df_to_s3
+from etl_spark.helpers import get_spark_context
 
 
 class CCEndpointBases:
@@ -90,13 +90,14 @@ class CCHistoricalOHLCV:
         self.all_data = all_data
         self.exchange = exchange
         # ~~~ Not Passed During Instantiation ~~~
+        self.all_data_non_daily = self.all_data & (self.request_type in ['HISTORICAL_OHLCV_HOURLY',
+                                                                         'HISTORICAL_OHLCV_MINUTE'])
         self.endpoint_bases = CCEndpointBases()
         self.last_utc_close_ts = None
         self.file_name_base = None
         self.url = None
         self.pairs = None
-        self.all_data_non_daily = self.all_data & (self.request_type in ['HISTORICAL_OHLCV_HOURLY',
-                                                                         'HISTORICAL_OHLCV_MINUTE'])
+        self.ohlcv_data = None
 
     def run_validation(self):
         """Checks that input variable values are valid.
@@ -159,7 +160,7 @@ class CCHistoricalOHLCV:
         self.pairs = itertools.product(self.fsyms, self.tsyms)
 
     def get_historical_ohlcv(self, pair):
-        """Get historical OHLCV data and upload to S3.
+        """Get historical OHLCV data.
 
            Cannot pass `allData` parameter to CryptoCompare API for non-daily historical OHLCV data -->
            When `all_data_non_daily` = True --> iterate from latest UTC timestamp backwards in batches of 2000.
@@ -167,7 +168,7 @@ class CCHistoricalOHLCV:
         Args:
             pair (tuple): e.g. ('BTC', 'USD')
 
-        Returns: Uploads pair-level response (concatenated if `all_data_non_daily` = True) to S3.
+        Returns: API response JSON.
 
         """
 
@@ -177,66 +178,77 @@ class CCHistoricalOHLCV:
 
         # handle `all_data_non_daily` = True
         if self.all_data_non_daily:
-            response_dfs = []
+            data_list = []
             # start loop at last UTC close
             to_ts = self.last_utc_close_ts
             while True:
                 resp = req.get(self.url.format(fsym, tsym, to_ts))
                 if resp.status_code == 200:
-                    content = json.loads(resp.content.decode('utf-8'))
-                    data = content['Data']
+                    resp_json = resp.json()
+                    data = resp_json['Data']
                     # stop when all records in response have `0` in `volumefrom`
                     all_no_volume = all([x['volumefrom'] == 0 for x in data])
                     if all_no_volume:
                         break
                     else:
-                        df = pd.DataFrame(data)
-                        df_filtered = df[df['time'] <= self.last_utc_close_ts]
-                        response_dfs.append(df_filtered)
-                        to_ts = content['TimeFrom']
+                        data_list.append(data)
+                        to_ts = resp_json['TimeFrom']
                 else:
                     break
 
-            if response_dfs:
-                # concatenate DataFrames
-                response_df_concat = pd.concat(response_dfs)
-                response_df_concat['fsym'] = fsym
-                response_df_concat['tsym'] = tsym
-                response_df_concat['request_timestamp'] = request_ts
-
-                # to S3
-                file_name = fsym + '-' + tsym + '/' + self.file_name_base
-                df_to_s3(df=response_df_concat.astype('str'),
-                         target_bucket=self.s3_bucket,
-                         folder_path=self.s3_folder_path,
-                         file_name=file_name,
-                         print_message=False)
+            if data_list:
+                # flatten list
+                data_all = [x for y in data_list for x in y]
+                for item in data_all:
+                    item.update({"fsym": fsym, "tsym": tsym, "request_timestamp": request_ts})
+                return data_all
 
         # handle all other requests
         else:
             resp = req.get(self.url.format(fsym, tsym))
             if resp.status_code == 200:
-                content = json.loads(resp.content.decode('utf-8'))
-                data = content['Data']
+                data = resp.json()['Data']
                 if data:
-                    df = pd.DataFrame(data)
-                    df['fsym'] = fsym
-                    df['tsym'] = tsym
-                    df['request_timestamp'] = request_ts
-                    df_filtered = df[df['time'] <= self.last_utc_close_ts]
-                    file_name = fsym + '-' + tsym + '/' + self.file_name_base
-                    df_to_s3(df=df_filtered.astype('str'),
-                             target_bucket=self.s3_bucket,
-                             folder_path=self.s3_folder_path,
-                             file_name=file_name,
-                             print_message=False)
+                    for item in data:
+                        item.update({"fsym": fsym, "tsym": tsym, "request_timestamp": request_ts})
+                    return data
 
-        return 0
+    def run_get_historical_ohlcv(self):
+        """
+
+        Returns:
+
+        """
+        print("~~~ Pulling Historical OHLCV data ~~~")
+        start_time = time.time()
+        pool = Pool()
+        ohlcv_data_list = pool.map(self.get_historical_ohlcv, self.pairs)
+        print("~~~ Historical OHLCV data pulled in: %s minutes ~~~" % round((time.time() - start_time) / 60, 2))
+        self.ohlcv_data = [x for y in ohlcv_data_list if y for x in y]
+
+    def upload_to_s3(self):
+        """
+
+        Returns:
+
+        """
+        # load API responses into Spark DataFrame
+        sc, sql_context = get_spark_context(d_mem='3g', e_mem='3g', aws_profile='default')
+        ohlcv_ll = sc.parallelize(self.ohlcv_data)
+        ohlcv_df = sql_context.read.json(ohlcv_ll)
+        ohlcv_df_cast = ohlcv_df.select(*(col(c).cast('string').alias(c) for c in ohlcv_df.columns))
+
+        # write as parquet file to S3
+        (ohlcv_df_cast
+         .cache()
+         .write
+         .option('compression', 'snappy')
+         .parquet(f"s3n://{self.s3_bucket}/{self.s3_folder_path}/{self.file_name_base}.parquet"))
 
     def run(self):
         """Run all functions.
 
-        Returns: API data written as parquet files to target AWS S3 bucket + path.
+        Returns: API data written as parquet files to target AWS S3 bucket.
 
         """
         self.run_validation()
@@ -247,8 +259,6 @@ class CCHistoricalOHLCV:
 
         self.get_pairs()
 
-        print("~~~ Pulling Historical OHLCV data ~~~")
-        start_time = time.time()
-        pool = Pool()
-        pool.map(self.get_historical_ohlcv, self.pairs)
-        print("~~~ Historical OHLCV data pulled in: %s minutes ~~~" % round((time.time() - start_time) / 60, 2))
+        self.run_get_historical_ohlcv()
+
+        self.upload_to_s3()
