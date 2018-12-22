@@ -202,7 +202,8 @@ class CCHistoricalOHLCV:
                 df['fsym'] = fsym
                 df['tsym'] = tsym
                 df['request_timestamp'] = request_ts
-                df_to_s3(df=df.astype('str'),
+                df_filt = df[df['time'] <= self.last_utc_close_ts]
+                df_to_s3(df=df_filt.astype('str'),
                          target_bucket=self.s3_bucket,
                          folder_path=self.s3_folder_path,
                          file_name=f"_{fsym}-{tsym}",
@@ -218,7 +219,8 @@ class CCHistoricalOHLCV:
                     df['fsym'] = fsym
                     df['tsym'] = tsym
                     df['request_timestamp'] = request_ts
-                    df_to_s3(df=df.astype('str'),
+                    df_filt = df[df['time'] <= self.last_utc_close_ts]
+                    df_to_s3(df=df_filt.astype('str'),
                              target_bucket=self.s3_bucket,
                              folder_path=self.s3_folder_path,
                              file_name=f"_{fsym}-{tsym}",
