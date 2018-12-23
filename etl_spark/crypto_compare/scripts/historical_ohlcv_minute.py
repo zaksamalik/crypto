@@ -11,19 +11,20 @@ def main():
     sc, sql_context = etl.get_spark_context(d_mem='2g', e_mem='4g', aws_profile='default')
 
     # load raw data
-    hourly_ohlcv_raw = (
+    minute_ohlcv_raw = (
         sql_context
             .read
-            .parquet("s3a://data.crypto/api/cryptocompare.com/historical/ohlcv/hourly/_2018-12-17_00_00_00/*")
+            .parquet("s3a://data.crypto/api/cryptocompare.com/historical/ohlcv/minute/_2018-12-18_00_00_00/*")
     )
 
     # cast columns
     double_cols = ['open', 'high', 'low', 'close', 'volumefrom', 'volumeto']
-    hourly_ohlcv_cast = (
-        hourly_ohlcv_raw
-            .select(*(col(c).cast('double').alias(c) if c in double_cols else c for c in hourly_ohlcv_raw.columns))
+    minute_ohlcv_cast = (
+        minute_ohlcv_raw
+            .select(*(col(c).cast('double').alias(c) if c in double_cols else c for c in minute_ohlcv_raw.columns))
             .withColumn('date_hour', etl.unix_time_to_ts(col('time').cast('int')))
             .withColumn('hour', sqlf.hour(col('date_hour')))
+            .withColumn('minute', sqlf.minute(col('date_hour')))
             .withColumn('date', col('date_hour').cast('date'))
             .withColumn('request_timestamp', etl.to_timestamp(col('request_timestamp')))
             .withColumnRenamed('volumefrom', 'volume_fsym')
@@ -35,18 +36,19 @@ def main():
                                         END"""))
     )
 
-    # get hour-over-hour `change` and `pct_change`
-    hourly_ohlcv_change = (
-        hourly_ohlcv_cast
+    # get minute-over-minute `change` and `pct_change`
+    minute_ohlcv_change = (
+        minute_ohlcv_cast
             .withColumn('close_lag1', expr("LAG(close) OVER(PARTITION BY fsym, tsym ORDER BY date_hour)"))
             .withColumn('change', col('close') - col('close_lag1'))
             .withColumn('pct_change', col('change') / col('close_lag1'))
     )
 
-    hourly_ohlcv_final = (
-        hourly_ohlcv_change.select(
+    minute_ohlcv_final = (
+        minute_ohlcv_change.select(
             ['date',
              'hour',
+             'minute',
              'fsym',
              'tsym',
              'open',
@@ -61,14 +63,14 @@ def main():
     )
 
     start_time = time.time()
-    (hourly_ohlcv_final
+    (minute_ohlcv_final
      .sort('date')
      .repartition('fsym_char1', 'tsym')
      .write
      .partitionBy(['fsym_char1', 'tsym'])
-     .parquet("s3a://etl.analysis/api/cryptocompare.com/historical/ohlcv/hourly/_2018-12-17_00_00_00.parquet"))
+     .parquet("s3a://etl.analysis/api/cryptocompare.com/historical/ohlcv/minute/_2018-12-18_00_00_00.parquet"))
     end_time = time.time()
-    print("~~~ OHLCV Hourly - completed in: %s minutes ~~~" % round((end_time - start_time) / 60, 2))
+    print("~~~ OHLCV Minute - completed in: %s minutes ~~~" % round((end_time - start_time) / 60, 2))
 
 
 if __name__ == '__main__':
