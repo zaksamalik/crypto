@@ -24,7 +24,7 @@ def pa_tbl_to_s3(pa_tbl, target_bucket, folder_path, file_name, print_message):
         print("`pa_tbl_to_s3`: Successfully uploaded to S3 bucket: `{}`".format(re.sub('s3://', '', output_file)))
 
 
-def df_to_s3(df, target_bucket, folder_path, file_name, print_message):
+def df_to_s3(df, target_bucket, folder_path, file_name, partition_cols=None, print_message=False):
     """Converts Pandas DataFrame to PyArrow table --> writes parquet file to S3 bucket.
 
     Args:
@@ -32,7 +32,8 @@ def df_to_s3(df, target_bucket, folder_path, file_name, print_message):
         target_bucket (str): name of S3 bucket
         folder_path (str): sub-folder path in bucket
         file_name (str): name for parquet file
-        print_message (bool): whether to print confirmation of upload to S3.
+        partition_cols (list): columns to partition data by
+        print_message (bool): whether to print confirmation of upload to S3
 
     Returns: Writes PandasData frame as parquet file to S3 bucket.
 
@@ -42,9 +43,17 @@ def df_to_s3(df, target_bucket, folder_path, file_name, print_message):
     # upload as parquet file to S3
     s3 = S3FileSystem()
     output_file = f"s3://{target_bucket}/{folder_path}/{file_name}.parquet"
-    pq.write_to_dataset(table=pa_tbl,
-                        root_path=output_file,
-                        filesystem=s3)
+
+    if partition_cols:
+        pq.write_to_dataset(table=pa_tbl,
+                            root_path=output_file,
+                            partition_cols=partition_cols,
+                            filesystem=s3)
+    else:
+        pq.write_to_dataset(table=pa_tbl,
+                            root_path=output_file,
+                            filesystem=s3)
+
     if print_message:
         print("`df_to_s3`: Successfully uploaded to S3 bucket: `{}`".format(re.sub('s3://', '', output_file)))
 

@@ -8,13 +8,16 @@ import etl_spark.helpers as etl
 
 def main():
     # get Spark contexts
-    sc, sql_context = etl.get_spark_context(d_mem='2g', e_mem='4g', aws_profile='default')
+    sc, sql_context = etl.get_spark_context(d_mem='6g', e_mem='4g', aws_profile='default')
 
     # load raw data
+    path = "s3a://data.crypto/api/cryptocompare.com/historical/ohlcv/hourly/_2018-12-23_00_00_00/*"
     hourly_ohlcv_raw = (
         sql_context
             .read
-            .parquet("s3a://data.crypto/api/cryptocompare.com/historical/ohlcv/hourly/_2018-12-17_00_00_00/*")
+            .parquet(path)
+            .repartition('fsym_char1')
+            .repartition('fsym_char1', 'fsym', 'tsym')
     )
 
     # cast columns
@@ -28,11 +31,6 @@ def main():
             .withColumn('request_timestamp', etl.to_timestamp(col('request_timestamp')))
             .withColumnRenamed('volumefrom', 'volume_fsym')
             .withColumnRenamed('volumeto', 'volume_tsym')
-            .withColumn('fsym_char1',
-                        sqlf.expr("""CASE
-                                            WHEN SUBSTRING(fsym, 1, 1) IN (0, 1, 2, 3, 4, 5, 6, 7, 8, 9) THEN '_'
-                                            ELSE SUBSTRING(fsym, 1, 1)
-                                        END"""))
     )
 
     # get hour-over-hour `change` and `pct_change`
@@ -66,7 +64,7 @@ def main():
      .repartition('fsym_char1', 'tsym')
      .write
      .partitionBy(['fsym_char1', 'tsym'])
-     .parquet("s3a://etl.analysis/api/cryptocompare.com/historical/ohlcv/hourly/_2018-12-17_00_00_00.parquet"))
+     .parquet("s3a://etl.analysis/api/cryptocompare.com/historical/ohlcv/hourly/_2018-12-23_00_00_00.parquet"))
     end_time = time.time()
     print("~~~ OHLCV Hourly - completed in: %s minutes ~~~" % round((end_time - start_time) / 60, 2))
 

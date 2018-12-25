@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 from multiprocessing import Pool
 
+import numpy as np
 import pandas as pd
 import requests as req
 
@@ -93,9 +94,8 @@ class CCHistoricalOHLCV:
                                                                          'HISTORICAL_OHLCV_MINUTE'])
         self.endpoint_bases = CCEndpointBases()
         self.last_utc_close_ts = None
-        self.file_name_base = None
         self.url = None
-        self.pairs = None
+        self.pairs = []
 
     def run_validation(self):
         """Checks that input variable values are valid.
@@ -104,14 +104,14 @@ class CCHistoricalOHLCV:
 
         """
         # check input types
-        assert type(self.app_name) is str, "Invalid value provided for `app_name` {}".format(str(self.app_name))
-        assert type(self.fsyms) is list, "Invalid value provided for `fsyms` {}".format(str(self.fsyms))
-        assert all([type(x) is str for x in self.fsyms]), "Invalid list contents in `fsyms` {}".format(str(self.fsyms))
-        assert type(self.tsyms) is list, "Invalid value provided for `tsyms` {}".format(str(self.tsyms))
-        assert all([type(x) is str for x in self.tsyms]), "Invalid list contents in `tsyms` {}".format(str(self.fsyms))
-        assert type(self.limit) is int, "Invalid value provided for `limit` {}".format(str(self.limit))
-        assert type(self.all_data) is bool, "Invalid value provided for `all_date` {}".format(str(self.all_data))
-        assert type(self.exchange) is str, "Invalid value provided for `exchange` {}".format(str(self.exchange))
+        assert isinstance(self.app_name, str), "Invalid value provided for `app_name` {}".format(str(self.app_name))
+        assert isinstance(self.fsyms, list), "Invalid value provided for `fsyms` {}".format(str(self.fsyms))
+        assert all([isinstance(x, str) for x in self.fsyms]), "Invalid list contents in `fsyms` {}".format(str(self.fsyms))
+        assert isinstance(self.tsyms, list), "Invalid value provided for `tsyms` {}".format(str(self.tsyms))
+        assert all([isinstance(x, str) for x in self.tsyms]), "Invalid list contents in `tsyms` {}".format(str(self.fsyms))
+        assert isinstance(self.limit, int), "Invalid value provided for `limit` {}".format(str(self.limit))
+        assert isinstance(self.all_data, bool), "Invalid value provided for `all_date` {}".format(str(self.all_data))
+        assert isinstance(self.exchange, str), "Invalid value provided for `exchange` {}".format(str(self.exchange))
         # validate `request_type`
         assert self.request_type in ['HISTORICAL_OHLCV_DAILY',
                                      'HISTORICAL_OHLCV_HOURLY',
@@ -156,7 +156,17 @@ class CCHistoricalOHLCV:
         Returns: `self.pairs` set to result of itertools product of `self.fsyms` and `self.tsyms`.
 
         """
-        self.pairs = itertools.product(self.fsyms, self.tsyms)
+        # get product of fsyms, tsyms
+        fsym_tsyms = itertools.product(self.fsyms, self.tsyms)
+        fsym_tsym_df = pd.DataFrame(list(fsym_tsyms), columns=['fsym', 'tsym'])
+        # get fsym first char
+        fsym_tsym_df['fsym_char1'] = fsym_tsym_df['fsym'].apply(lambda x: '_' if re.match("[0-9]", x) else x[0])
+
+        fsym_char1s = np.unique(fsym_tsym_df['fsym_char1'])
+        for char1 in fsym_char1s:
+            df_sub = fsym_tsym_df[fsym_tsym_df['fsym_char1'] == char1]
+            pair = zip(df_sub['fsym'], df_sub['tsym'], df_sub['fsym_char1'])
+            self.pairs.append(pair)
 
     def get_historical_ohlcv(self, pair):
         """Get historical OHLCV data from CryptoCompare API and upload as Parquet file to S3.
@@ -173,6 +183,7 @@ class CCHistoricalOHLCV:
 
         fsym = pair[0]
         tsym = pair[1]
+        fsym_char1 = pair[2]
         request_ts = datetime.utcnow().__str__()
 
         # handle `all_data_non_daily` = True
@@ -195,19 +206,16 @@ class CCHistoricalOHLCV:
                 else:
                     break
 
+            # flatten list
             if data_list:
-                # flatten list
                 data_all = [x for y in data_list for x in y]
                 df = pd.DataFrame(data_all)
                 df['fsym'] = fsym
                 df['tsym'] = tsym
+                df['fsym_char1'] = fsym_char1
                 df['request_timestamp'] = request_ts
                 df_filt = df[df['time'] <= self.last_utc_close_ts]
-                df_to_s3(df=df_filt.astype('str'),
-                         target_bucket=self.s3_bucket,
-                         folder_path=self.s3_folder_path,
-                         file_name=f"_{fsym}-{tsym}",
-                         print_message=False)
+                return df_filt
 
         # handle all other requests
         else:
@@ -218,14 +226,10 @@ class CCHistoricalOHLCV:
                     df = pd.DataFrame(data)
                     df['fsym'] = fsym
                     df['tsym'] = tsym
+                    df['fsym_char1'] = fsym_char1
                     df['request_timestamp'] = request_ts
                     df_filt = df[df['time'] <= self.last_utc_close_ts]
-                    df_to_s3(df=df_filt.astype('str'),
-                             target_bucket=self.s3_bucket,
-                             folder_path=self.s3_folder_path,
-                             file_name=f"_{fsym}-{tsym}",
-                             print_message=False)
-        return 0
+                    return df_filt
 
     def run_get_historical_ohlcv(self):
         """Runs `get_historical_ohlcv` over all `pairs` in parallel.
@@ -235,8 +239,23 @@ class CCHistoricalOHLCV:
         """
         print("~~~ Pulling Historical OHLCV data ~~~")
         start_time = time.time()
-        pool = Pool()
-        pool.map(self.get_historical_ohlcv, self.pairs)
+        for pair_set in self.pairs:
+            # get data for each `fsym_char`, `tsym` set
+            pool = Pool()
+            ohlcv_df_list = pool.map(self.get_historical_ohlcv, pair_set)
+            # concatenate dfs
+            if [x for x in ohlcv_df_list if x is not None]:
+                ohlcv_df = pd.concat([x for x in ohlcv_df_list if x is not None])
+                fsym_char1 = np.unique(ohlcv_df['fsym_char1'])
+                assert len(fsym_char1) == 1, "Multiple `fsym_char1s` in data: {}".format(str(fsym_char1))
+                # write parquet to S3
+                df_to_s3(df=ohlcv_df.sort_values('time').astype('str'),
+                         target_bucket='data.crypto',
+                         folder_path=self.s3_folder_path,
+                         file_name="fsym_char1={}".format(fsym_char1[0]),
+                         partition_cols=None,
+                         print_message=True)
+            pool.close()
         print("~~~ Historical OHLCV data pulled in: %s minutes ~~~" % round((time.time() - start_time) / 60, 2))
 
     def run(self):
