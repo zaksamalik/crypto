@@ -1,6 +1,3 @@
-"""
-TODO: docstrings
-"""
 import json
 
 import pandas as pd
@@ -20,13 +17,13 @@ def get_coin_list():
     # get all coin information
     coin_list_url = CCEndpointBases().OTHER_ALL_COINS
     resp = req.get(coin_list_url)
-    assert resp.status_code == 200, "Bad HTTP responses {}!".format(str(resp.status_code))
+    assert resp.status_code == 200, 'Bad HTTP responses {}!'.format(str(resp.status_code))
     content = json.loads(resp.content.decode('utf-8'))
     # extract data for each coin
     data = content['Data']
     coin_data = [data[c] for c in data.keys()]
     # concatenate to single df
-    coin_list_df = pd.DataFrame(coin_data).astype('str')
+    coin_list_df = pd.DataFrame(coin_data).applymap(str)
     return coin_list_df
 
 

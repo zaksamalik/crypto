@@ -4,7 +4,8 @@ from datetime import datetime
 
 import holidays
 import pandas as pd
-from pyspark import SparkConf, SparkContext, SQLContext
+from pyspark import SparkConf, SparkContext
+from pyspark.sql import SQLContext
 from pyspark.sql.functions import pandas_udf, PandasUDFType
 from pyspark.sql.types import DateType, TimestampType, StringType, BooleanType
 
@@ -48,8 +49,8 @@ def get_spark_context(d_mem, e_mem, aws_profile=None):
     return sc, sql
 
 
-@pandas_udf(DateType(), PandasUDFType.SCALAR)
-def to_date(target_col):
+@pandas_udf(returnType=DateType(), functionType=PandasUDFType.SCALAR)
+def to_date_func(target_col):
     return pd.to_datetime(target_col, infer_datetime_format=True, errors='coerce')
 
 

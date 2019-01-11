@@ -30,13 +30,14 @@ class BlockChainDotComEndpointBases:
         self.N_UNIQUE_ADDRESSES = "https://api.blockchain.info/charts/n-unique-addresses"
         self.N_TRANSACTIONS = "https://api.blockchain.info/charts/n-transactions"
         self.N_TRANSACTIONS_TOTAL = "https://api.blockchain.info/charts/n-transactions-total"
-        self.TRANSACTIONS_PER_SECOND = "https://api.blockchain.info/charts/transactions-per-second"  # TODO: requires special handling
+        self.TRANSACTIONS_PER_SECOND = "https://api.blockchain.info/charts/transactions-per-second"  # TODO:
         self.MEMPOOL_COUNT = "https://api.blockchain.info/charts/mempool-count"  # TODO: requires special handling
         self.MEMPOOL_GROWTH = "https://api.blockchain.info/charts/mempool-growth"  # TODO: requires special handling
         self.MEMPOOL_SIZE = "https://api.blockchain.info/charts/mempool-size"  # TODO: requires special handling
         self.UTXO_COUNT = "https://api.blockchain.info/charts/utxo-count"
         self.N_TRANSACTIONS_EXCLUDING_POPULAR = "https://api.blockchain.info/charts/n-transactions-excluding-popular"
-        self.N_TRANSACTIONS_EXCLUDING_CHAINS_LONGER_THAN_100 = "https://api.blockchain.info/charts/n-transactions-excluding-chains-longer-than-100"
+        self.N_TRANSACTIONS_EXCLUDING_CHAINS_LONGER_THAN_100 = ("https://api.blockchain.info/charts/"
+                                                                "n-transactions-excluding-chains-longer-than-100")
         self.OUTPUT_VOLUME = "https://api.blockchain.info/charts/output-volume"
         self.ESTIMATED_TRANSACTION_VOLUME = "https://api.blockchain.info/charts/estimated-transaction-volume"
         self.ESTIMATED_TRANSACTION_VOLUME_USD = "https://api.blockchain.info/charts/estimated-transaction-volume-usd"

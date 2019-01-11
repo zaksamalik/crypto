@@ -11,37 +11,32 @@ def main():
     sc, sql_context = etl.get_spark_context(d_mem='4g', e_mem='4g', aws_profile='default')
 
     # load raw data
-    daily_ohlcv_raw = (
-        sql_context
-            .read
-            .parquet("s3a://data.crypto/api/cryptocompare.com/historical/ohlcv/daily/_2018-12-23_00_00_00/*")
-    )
+    daily_ohlcv_raw = (sql_context
+                       .read
+                       .parquet("s3a://data.crypto/api/cryptocompare.com/historical/ohlcv/daily"
+                                "/_2018-12-23_00_00_00/*"))
 
     # cast columns
     double_cols = ['open', 'high', 'low', 'close', 'volumefrom', 'volumeto']
-    daily_ohlcv_cast = (
-        daily_ohlcv_raw
-            .select(*(col(c).cast('double').alias(c) if c in double_cols else c for c in daily_ohlcv_raw.columns))
-            .withColumn('date', etl.unix_time_to_ts(col('time').cast('int')))
-            .withColumn('request_timestamp', etl.to_timestamp(col('request_timestamp')))
-            .withColumnRenamed('volumefrom', 'volume_fsym')
-            .withColumnRenamed('volumeto', 'volume_tsym')
-    )
+    daily_ohlcv_cast = (daily_ohlcv_raw
+                        .select(*(col(c).cast('double').alias(c) if c in double_cols
+                                  else c for c in daily_ohlcv_raw.columns))
+                        .withColumn('date', etl.unix_time_to_ts(col('time').cast('int')))
+                        .withColumn('request_timestamp', etl.to_timestamp(col('request_timestamp')))
+                        .withColumnRenamed('volumefrom', 'volume_fsym')
+                        .withColumnRenamed('volumeto', 'volume_tsym'))
 
     # get day-over-day `change` and `pct_change`
-    daily_ohlcv_change = (
-        daily_ohlcv_cast
-            .withColumn('close_lag1', expr("LAG(close) OVER(PARTITION BY fsym, tsym ORDER BY DATE)"))
-            .withColumn('change', col('close') - col('close_lag1'))
-            .withColumn('pct_change', col('change') / col('close_lag1'))
-    )
+    daily_ohlcv_change = (daily_ohlcv_cast
+                          .withColumn('close_lag1', expr("LAG(close) OVER(PARTITION BY fsym, tsym ORDER BY DATE)"))
+                          .withColumn('change', col('close') - col('close_lag1'))
+                          .withColumn('pct_change', col('change') / col('close_lag1')))
 
     # get all-time-high (ATH), pct-from-ATH, and days-since ATH
-    daily_ohlcv_atf = (
-        daily_ohlcv_change
-            .withColumn("all_time_high", expr("MAX(NULLIF(high, 0)) OVER(PARTITION BY fsym, tsym ORDER BY DATE)"))
-            .withColumn("pct_from_ath", col("close") / sqlf.col("all_time_high") - lit(1))
-    )
+    daily_ohlcv_atf = (daily_ohlcv_change
+                       .withColumn("all_time_high",
+                                   expr("MAX(NULLIF(high, 0)) OVER(PARTITION BY fsym, tsym ORDER BY DATE)"))
+                       .withColumn("pct_from_ath", col("close") / sqlf.col("all_time_high") - lit(1)))
 
     daily_ohlcv_final = (
         daily_ohlcv_atf.select(

@@ -106,9 +106,11 @@ class CCHistoricalOHLCV:
         # check input types
         assert isinstance(self.app_name, str), "Invalid value provided for `app_name` {}".format(str(self.app_name))
         assert isinstance(self.fsyms, list), "Invalid value provided for `fsyms` {}".format(str(self.fsyms))
-        assert all([isinstance(x, str) for x in self.fsyms]), "Invalid list contents in `fsyms` {}".format(str(self.fsyms))
+        assert all([isinstance(x, str) for x in self.fsyms]), ("Invalid list contents in `fsyms` {}"
+                                                               .format(str(self.fsyms)))
         assert isinstance(self.tsyms, list), "Invalid value provided for `tsyms` {}".format(str(self.tsyms))
-        assert all([isinstance(x, str) for x in self.tsyms]), "Invalid list contents in `tsyms` {}".format(str(self.fsyms))
+        assert all([isinstance(x, str) for x in self.tsyms]), ("Invalid list contents in `tsyms` {}"
+                                                               .format(str(self.fsyms)))
         assert isinstance(self.limit, int), "Invalid value provided for `limit` {}".format(str(self.limit))
         assert isinstance(self.all_data, bool), "Invalid value provided for `all_date` {}".format(str(self.all_data))
         assert isinstance(self.exchange, str), "Invalid value provided for `exchange` {}".format(str(self.exchange))
@@ -130,8 +132,6 @@ class CCHistoricalOHLCV:
         utc_current = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
         utc_previous = utc_current - pd.DateOffset(days=1)
         self.last_utc_close_ts = utc_previous.timestamp().__int__()
-        self.s3_folder_path = (self.s3_folder_path + '/_' +
-                               re.sub('[ :]', '_', pd.to_datetime(self.last_utc_close_ts, unit='s').__str__()))
 
     def get_url(self):
         """Get URL endpoint with all parameter values except `fsym` and `tsym`.
@@ -213,6 +213,10 @@ class CCHistoricalOHLCV:
                 df['fsym'] = fsym
                 df['tsym'] = tsym
                 df['fsym_char1'] = fsym_char1
+                df['date'] = df['time'].map(lambda t: pd.to_datetime(t, unit='s'))
+                df['year'], df['month'], df['day'] = (df['date'].apply(lambda x: x.year),
+                                                      df['date'].apply(lambda x: x.month),
+                                                      df['date'].apply(lambda x: x.day))
                 df['request_timestamp'] = request_ts
                 df_filt = df[df['time'] <= self.last_utc_close_ts]
                 return df_filt
@@ -227,6 +231,10 @@ class CCHistoricalOHLCV:
                     df['fsym'] = fsym
                     df['tsym'] = tsym
                     df['fsym_char1'] = fsym_char1
+                    df['date'] = df['time'].map(lambda t: pd.to_datetime(t, unit='s'))
+                    df['year'], df['month'], df['day'] = (df['date'].apply(lambda x: x.year),
+                                                          df['date'].apply(lambda x: x.month),
+                                                          df['date'].apply(lambda x: x.day))
                     df['request_timestamp'] = request_ts
                     df_filt = df[df['time'] <= self.last_utc_close_ts]
                     return df_filt
@@ -249,11 +257,10 @@ class CCHistoricalOHLCV:
                 fsym_char1 = np.unique(ohlcv_df['fsym_char1'])
                 assert len(fsym_char1) == 1, "Multiple `fsym_char1s` in data: {}".format(str(fsym_char1))
                 # write parquet to S3
-                df_to_s3(df=ohlcv_df.sort_values('time').astype('str'),
+                df_to_s3(df=ohlcv_df.sort_values('time').applymap(str),
                          target_bucket='data.crypto',
                          folder_path=self.s3_folder_path,
-                         file_name="fsym_char1={}".format(fsym_char1[0]),
-                         partition_cols=None,
+                         partition_cols=['fsym_char1', 'year', 'month', 'day'],
                          print_message=True)
             pool.close()
         print("~~~ Historical OHLCV data pulled in: %s minutes ~~~" % round((time.time() - start_time) / 60, 2))

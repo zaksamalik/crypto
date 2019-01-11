@@ -11,35 +11,29 @@ def main():
     sc, sql_context = etl.get_spark_context(d_mem='6g', e_mem='4g', aws_profile='default')
 
     # load raw data
-    path = "s3a://data.crypto/api/cryptocompare.com/historical/ohlcv/hourly/_2018-12-23_00_00_00/*"
-    hourly_ohlcv_raw = (
-        sql_context
-            .read
-            .parquet(path)
-            .repartition('fsym_char1')
-            .repartition('fsym_char1', 'fsym', 'tsym')
-    )
+    path = "s3a://data.crypto/api/cryptocompare.com/historical/ohlcv/hourly/_2018-12-23_00_00_00/fsym_char1=A.parquet"
+    hourly_ohlcv_raw = (sql_context
+                        .read
+                        .parquet(path))
 
     # cast columns
     double_cols = ['open', 'high', 'low', 'close', 'volumefrom', 'volumeto']
-    hourly_ohlcv_cast = (
-        hourly_ohlcv_raw
-            .select(*(col(c).cast('double').alias(c) if c in double_cols else c for c in hourly_ohlcv_raw.columns))
-            .withColumn('date_hour', etl.unix_time_to_ts(col('time').cast('int')))
-            .withColumn('hour', sqlf.hour(col('date_hour')))
-            .withColumn('date', col('date_hour').cast('date'))
-            .withColumn('request_timestamp', etl.to_timestamp(col('request_timestamp')))
-            .withColumnRenamed('volumefrom', 'volume_fsym')
-            .withColumnRenamed('volumeto', 'volume_tsym')
-    )
+    hourly_ohlcv_cast = (hourly_ohlcv_raw
+                         .select(*(col(c).cast('double').alias(c) if c in double_cols
+                                   else c for c in hourly_ohlcv_raw.columns))
+                         .withColumn('date_hour', etl.unix_time_to_ts(col('time').cast('int')))
+                         .withColumn('hour', sqlf.hour(col('date_hour')))
+                         .withColumn('date', col('date_hour').cast('date'))
+                         .withColumn('request_timestamp', etl.to_timestamp(col('request_timestamp')))
+                         .withColumnRenamed('volumefrom', 'volume_fsym')
+                         .withColumnRenamed('volumeto', 'volume_tsym'))
 
     # get hour-over-hour `change` and `pct_change`
-    hourly_ohlcv_change = (
-        hourly_ohlcv_cast
-            .withColumn('close_lag1', expr("LAG(close) OVER(PARTITION BY fsym, tsym ORDER BY date_hour)"))
-            .withColumn('change', col('close') - col('close_lag1'))
-            .withColumn('pct_change', col('change') / col('close_lag1'))
-    )
+    hourly_ohlcv_change = (hourly_ohlcv_cast
+                           .withColumn('close_lag1',
+                                       expr("LAG(close) OVER(PARTITION BY fsym, tsym ORDER BY date_hour)"))
+                           .withColumn('change', col('close') - col('close_lag1'))
+                           .withColumn('pct_change', col('change') / col('close_lag1')))
 
     hourly_ohlcv_final = (
         hourly_ohlcv_change.select(
