@@ -187,6 +187,7 @@ class CCHistoricalOHLCV:
         request_ts = datetime.utcnow().__str__()
 
         # handle `all_data_non_daily` = True
+        df = None
         if self.all_data_non_daily:
             data_list = []
             # start loop at last UTC close
@@ -205,22 +206,10 @@ class CCHistoricalOHLCV:
                         to_ts = resp_json['TimeFrom']
                 else:
                     break
-
             # flatten list
             if data_list:
                 data_all = [x for y in data_list for x in y]
                 df = pd.DataFrame(data_all)
-                df['fsym'] = fsym
-                df['tsym'] = tsym
-                df['fsym_char1'] = fsym_char1
-                df['date'] = df['time'].map(lambda t: pd.to_datetime(t, unit='s'))
-                df['year'], df['month'], df['day'] = (df['date'].apply(lambda x: x.year),
-                                                      df['date'].apply(lambda x: x.month),
-                                                      df['date'].apply(lambda x: x.day))
-                df['request_timestamp'] = request_ts
-                df_filt = df[df['time'] <= self.last_utc_close_ts]
-                return df_filt
-
         # handle all other requests
         else:
             resp = req.get(self.url.format(fsym, tsym))
@@ -228,16 +217,19 @@ class CCHistoricalOHLCV:
                 data = resp.json()['Data']
                 if data:
                     df = pd.DataFrame(data)
-                    df['fsym'] = fsym
-                    df['tsym'] = tsym
-                    df['fsym_char1'] = fsym_char1
-                    df['date'] = df['time'].map(lambda t: pd.to_datetime(t, unit='s'))
-                    df['year'], df['month'], df['day'] = (df['date'].apply(lambda x: x.year),
-                                                          df['date'].apply(lambda x: x.month),
-                                                          df['date'].apply(lambda x: x.day))
-                    df['request_timestamp'] = request_ts
-                    df_filt = df[df['time'] <= self.last_utc_close_ts]
-                    return df_filt
+
+        # add columns
+        if df:
+            df['fsym'] = fsym
+            df['tsym'] = tsym
+            df['fsym_char1'] = fsym_char1
+            df['date'] = df['time'].map(lambda t: pd.to_datetime(t, unit='s'))
+            df['year'], df['month'], df['day'] = (df['date'].apply(lambda x: x.year),
+                                                  df['date'].apply(lambda x: x.month),
+                                                  df['date'].apply(lambda x: x.day))
+            df['request_timestamp'] = request_ts
+            df_filt = df[df['time'] <= self.last_utc_close_ts]
+            return df_filt
 
     def run_get_historical_ohlcv(self):
         """Runs `get_historical_ohlcv` over all `pairs` in parallel.

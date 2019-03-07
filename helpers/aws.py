@@ -41,7 +41,7 @@ def df_to_s3(df, target_bucket, folder_path, partition_cols, print_message=False
     assert partition_cols, "No partition columns were provided. Please include as list of strings to `partition_cols`."
 
     # convert df to PyArrow table
-    pa_tbl = pa.Table.from_pandas(df=df)
+    pa_tbl = pa.Table.from_pandas(df=df, preserve_index=False)
     # upload as parquet file to S3
     s3 = S3FileSystem()
     output_file = f"s3://{target_bucket}/{folder_path}"
